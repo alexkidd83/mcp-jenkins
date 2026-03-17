@@ -308,6 +308,24 @@ class Jenkins:
         scripts = [textarea.text for textarea in soup.find_all('textarea', {'name': re.compile(r'_\..*Script.*')})]
         return BuildReplay(scripts=scripts)
 
+    def get_build_parameters(self, *, fullname: str, number: int) -> dict:
+        """Get the build parameters of a specific build.
+
+        Args:
+            fullname: The fullname of the job.
+            number: The build number.
+
+        Returns:
+            A dictionary representing the build parameters.
+        """
+        folder, name = self._parse_fullname(fullname)
+        response = self.request('GET', rest_endpoint.BUILD_PARAMETERS(folder=folder, name=name, number=number))
+
+        for action in response.json().get('actions', []):
+            if 'parameters' in action:
+                return {p['name']: p.get('value') for p in action['parameters']}
+        return {}
+
     def get_build_test_report(self, *, fullname: str, number: int, depth: int = 0) -> dict:
         """Get the test report of a specific build.
 

@@ -63,6 +63,14 @@ async def test_get_build_test_reports(mock_jenkins, mocker):
 
 
 @pytest.mark.asyncio
+async def test_get_build_parameters(mock_jenkins, mocker):
+    mock_jenkins.get_item.return_value.lastBuild.number = 1
+    mock_jenkins.get_build_parameters.return_value = {'BRANCH': 'main', 'DEBUG': True}
+
+    assert await build.get_build_parameters(mocker.Mock(), fullname='job1') == {'BRANCH': 'main', 'DEBUG': True}
+
+
+@pytest.mark.asyncio
 async def test_stop_build(mock_jenkins, mocker):
     await build.stop_build(mocker.Mock(), fullname='job1', number=1)
     mock_jenkins.stop_build.assert_called_once_with(fullname='job1', number=1)

@@ -60,7 +60,6 @@ def jenkins(ctx: Context) -> Jenkins:
         jenkins_username = getattr(requests.state, 'jenkins_username', None) or jenkins_username
         jenkins_password = getattr(requests.state, 'jenkins_password', None) or jenkins_password
 
-
         logger.debug(f'Retrieved Jenkins auth from request state - url: {jenkins_url}, username: {jenkins_username}')
     except RuntimeError as e:
         logger.debug(f'No HTTP request context available, falling back to environment variables: {e}')

@@ -85,6 +85,23 @@ async def get_build_test_report(ctx: Context, fullname: str, number: int | None 
     return jenkins(ctx).get_build_test_report(fullname=fullname, number=number)
 
 
+@mcp.tool(tags=['read'])
+async def get_build_parameters(ctx: Context, fullname: str, number: int | None = None) -> dict:
+    """Get the parameters of a specific build in Jenkins
+
+    Args:
+        fullname: The fullname of the job
+        number: The number of the build, if None, get the last build
+
+    Returns:
+        A dictionary of build parameter names and their values
+    """
+    if number is None:
+        number = jenkins(ctx).get_item(fullname=fullname, depth=1).lastBuild.number
+
+    return jenkins(ctx).get_build_parameters(fullname=fullname, number=number)
+
+
 @mcp.tool(tags=['write'])
 async def stop_build(ctx: Context, fullname: str, number: int) -> None:
     """Stop a specific build in Jenkins

@@ -443,6 +443,39 @@ class TestBuild:
             scripts=['main script code here', 'additional script code here']
         )
 
+    def test_get_build_parameters(self, jenkins, mock_session, mocker):
+        mock_session.request.return_value = mocker.Mock(
+            json=lambda: {
+                'actions': [
+                    {
+                        '_class': 'hudson.model.ParametersAction',
+                        'parameters': [
+                            {'name': 'BRANCH', 'value': 'main'},
+                            {'name': 'DEBUG', 'value': True},
+                        ],
+                    },
+                ]
+            }
+        )
+
+        assert jenkins.get_build_parameters(fullname='example-job', number=1) == {
+            'BRANCH': 'main',
+            'DEBUG': True,
+        }
+
+        mock_session.request.assert_called_once_with(
+            method='GET',
+            url='https://example.com/job/example-job/1/api/json?tree=actions[parameters[name,value]]',
+            headers={'Jenkins-Crumb': 'crumb-value'},
+            params=None,
+            data=None,
+        )
+
+    def test_get_build_parameters_no_params(self, jenkins, mock_session, mocker):
+        mock_session.request.return_value = mocker.Mock(json=lambda: {'actions': []})
+
+        assert jenkins.get_build_parameters(fullname='example-job', number=1) == {}
+
     def test_get_build_test_report(self, jenkins, mock_session, mocker):
         mock_session.request.return_value = mocker.Mock(
             json=lambda: {

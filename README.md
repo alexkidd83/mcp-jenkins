@@ -110,6 +110,7 @@ uvx mcp-jenkins \
 |----------------------------|-----------------------------------------------------|
 | `get_item`                 | Get a specific item by name.                        |
 | `get_item_config`          | Get the configuration of a specific item.           |
+| `get_item_parameters`      | Get the parameters of a specific item.              |
 | `get_all_items`            | Get all items in Jenkins.                           |
 | `query_items`              | Query items based on pattern.                       |
 | `build_item`               | Build a item.                                       |
@@ -122,9 +123,12 @@ uvx mcp-jenkins \
 | `get_build`                | Get a specific build by job name and build number.  |
 | `get_build_scripts`        | Get scripts associated with a specific build.       |
 | `get_build_console_output` | Get the console output of a specific build.         |
+| `get_build_parameters`     | Get the parameters of a specific build.             |
 | `get_build_test_report`    | Get the test report of a specific build.            |
 | `get_running_builds`       | Get all currently running builds in Jenkins.        |
 | `stop_build`               | Stop a specific build by job name and build number. |
+| `get_view`                 | Get a specific view by name.                        |
+| `get_all_views`          | Get the configuration of a specific view.           |
 
 
 ## Contributing
