@@ -1,3 +1,4 @@
+import xml.etree.ElementTree as ET
 from typing import Literal
 
 from fastmcp import Context
@@ -95,3 +96,30 @@ async def build_item(
         The queue item number of the item.
     """
     return jenkins(ctx).build_item(fullname=fullname, build_type=build_type, params=params)
+
+
+@mcp.tool(tags=['read'])
+async def get_job_parameters(ctx: Context, fullname: str) -> list[dict]:
+    """Get the parameter definitions of a Jenkins job
+
+    Args:
+        fullname: The fullname of the item
+
+    Returns:
+        A list of parameter definitions, each containing name, type, defaultValue, and description
+    """
+    config_xml = jenkins(ctx).get_item_config(fullname=fullname)
+    root = ET.fromstring(config_xml)
+
+    params = []
+    for param in root.iter('parameterDefinitions'):
+        for definition in param:
+            entry = {
+                'name': definition.findtext('name', ''),
+                'type': definition.tag,
+                'defaultValue': definition.findtext('defaultValue', ''),
+                'description': definition.findtext('description', ''),
+            }
+            params.append(entry)
+
+    return params
