@@ -60,6 +60,7 @@ async def query_items(
     class_pattern: str = None,
     fullname_pattern: str = None,
     color_pattern: str = None,
+    folder_depth: int | None = None,
 ) -> list[dict]:
     """Query items from Jenkins
 
@@ -67,6 +68,7 @@ async def query_items(
         class_pattern: The pattern of the _class
         fullname_pattern: The pattern of the fullname
         color_pattern: The pattern of the color
+        folder_depth: The maximum depth of folders to traverse. If None, traverses all levels.
 
     Returns:
         A list of items
@@ -77,6 +79,7 @@ async def query_items(
             class_pattern=class_pattern,
             fullname_pattern=fullname_pattern,
             color_pattern=color_pattern,
+            folder_depth=folder_depth,
         )
     ]
 
