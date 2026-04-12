@@ -87,7 +87,22 @@ class Jenkins:
         url = self.endpoint_url(endpoint)
         logger.debug(f'Sending [{method}] request to {url}')
 
-        response = self._session.request(method=method, url=url, headers=headers, params=params, data=data)
+        response = self._session.request(
+            method=method, url=url, headers=headers, params=params, data=data, timeout=self.timeout,
+        )
+
+        # When a Jenkins HTTP session expires the cached CSRF crumb becomes
+        # invalid and every POST returns 403.  Retry once with a fresh crumb
+        # before giving up — this covers the stale-session case while still
+        # surfacing genuine permission errors on the second attempt.
+        if crumb and response.status_code == 403 and self._crumb_header:
+            logger.warning('Received 403 with a cached crumb — refreshing crumb and retrying the request')
+            self._crumb_header = None
+            headers.update(self.crumb_header)
+            response = self._session.request(
+                method=method, url=url, headers=headers, params=params, data=data, timeout=self.timeout,
+            )
+
         response.raise_for_status()
 
         return response

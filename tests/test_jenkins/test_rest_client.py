@@ -56,6 +56,7 @@ class TestRequest:
             },
             params=None,
             data=None,
+            timeout=75,
         )
 
     def test_request_without_crumb(self, jenkins, mock_session):
@@ -69,6 +70,7 @@ class TestRequest:
             },
             params=None,
             data=None,
+            timeout=75,
         )
 
 
@@ -109,6 +111,105 @@ class TestCrumbHeader:
             _ = jenkins.crumb_header
 
 
+class TestCrumbRetry:
+    def test_retry_on_403_refreshes_crumb(self, mock_session, mocker):
+        j = Jenkins(url='https://example.com/', username='username', password='password')
+        # Simulate stale crumb cached from earlier
+        j._crumb_header = {'Jenkins-Crumb': 'stale-crumb'}
+
+        forbidden_resp = mocker.Mock(status_code=403)
+        forbidden_resp.raise_for_status.side_effect = HTTPError(response=forbidden_resp)
+
+        success_resp = mocker.Mock(status_code=201)
+        success_resp.raise_for_status.return_value = None
+
+        crumb_resp = mocker.Mock(
+            status_code=200,
+            json=lambda: {'crumbRequestField': 'Jenkins-Crumb', 'crumb': 'fresh-crumb'},
+        )
+        crumb_resp.raise_for_status.return_value = None
+
+        # First POST → 403, crumb refresh GET → new crumb, retry POST → 201
+        mock_session.request.side_effect = [forbidden_resp, crumb_resp, success_resp]
+
+        result = j.request('POST', 'job/test/build')
+
+        assert result.status_code == 201
+        assert j._crumb_header == {'Jenkins-Crumb': 'fresh-crumb'}
+        assert mock_session.request.call_count == 3
+
+    def test_no_retry_when_crumb_was_empty(self, mock_session, mocker):
+        j = Jenkins(url='https://example.com/', username='username', password='password')
+        # Empty crumb (CSRF disabled) — should NOT retry on 403
+        j._crumb_header = {}
+
+        forbidden_resp = mocker.Mock(status_code=403)
+        forbidden_resp.raise_for_status.side_effect = HTTPError(response=forbidden_resp)
+        mock_session.request.return_value = forbidden_resp
+
+        with pytest.raises(HTTPError):
+            j.request('POST', 'job/test/build')
+
+        assert mock_session.request.call_count == 1
+
+    def test_no_retry_on_non_403_errors(self, mock_session, mocker):
+        """Server errors (500, 401, etc.) must not trigger the crumb retry path."""
+        j = Jenkins(url='https://example.com/', username='username', password='password')
+        j._crumb_header = {'Jenkins-Crumb': 'some-crumb'}
+
+        for status in (401, 500, 502):
+            mock_session.reset_mock()
+            error_resp = mocker.Mock(status_code=status)
+            error_resp.raise_for_status.side_effect = HTTPError(response=error_resp)
+            mock_session.request.return_value = error_resp
+
+            with pytest.raises(HTTPError):
+                j.request('POST', 'job/test/build')
+
+            # Only 1 call — no retry
+            assert mock_session.request.call_count == 1
+
+    def test_no_retry_when_crumb_is_false(self, mock_session, mocker):
+        """Requests with crumb=False must never trigger the retry path, even on 403."""
+        j = Jenkins(url='https://example.com/', username='username', password='password')
+        j._crumb_header = {'Jenkins-Crumb': 'some-crumb'}
+
+        forbidden_resp = mocker.Mock(status_code=403)
+        forbidden_resp.raise_for_status.side_effect = HTTPError(response=forbidden_resp)
+        mock_session.request.return_value = forbidden_resp
+
+        with pytest.raises(HTTPError):
+            j.request('GET', 'crumbIssuer/api/json', crumb=False)
+
+        assert mock_session.request.call_count == 1
+
+    def test_retry_also_fails_raises_original_error(self, mock_session, mocker):
+        """When the retry request also returns 403, the error must propagate."""
+        j = Jenkins(url='https://example.com/', username='username', password='password')
+        j._crumb_header = {'Jenkins-Crumb': 'stale-crumb'}
+
+        forbidden_resp = mocker.Mock(status_code=403)
+        forbidden_resp.raise_for_status.side_effect = HTTPError(response=forbidden_resp)
+
+        crumb_resp = mocker.Mock(
+            status_code=200,
+            json=lambda: {'crumbRequestField': 'Jenkins-Crumb', 'crumb': 'fresh-crumb'},
+        )
+        crumb_resp.raise_for_status.return_value = None
+
+        still_forbidden_resp = mocker.Mock(status_code=403)
+        still_forbidden_resp.raise_for_status.side_effect = HTTPError(response=still_forbidden_resp)
+
+        # First POST → 403, crumb refresh → ok, retry POST → still 403
+        mock_session.request.side_effect = [forbidden_resp, crumb_resp, still_forbidden_resp]
+
+        with pytest.raises(HTTPError) as exc_info:
+            j.request('POST', 'job/test/build')
+
+        assert exc_info.value.response.status_code == 403
+        assert mock_session.request.call_count == 3
+
+
 def test_parse_fullname(jenkins):
     assert jenkins._parse_fullname('job-name') == ('', 'job-name')
     assert jenkins._parse_fullname('folder/job-name') == ('job/folder/', 'job-name')
@@ -147,6 +248,7 @@ class TestView:
             headers={'Jenkins-Crumb': 'crumb-value'},
             params=None,
             data=None,
+            timeout=75,
         )
 
     def test_get_view(self, jenkins, mock_session, mocker):
@@ -182,6 +284,7 @@ class TestView:
             headers={'Jenkins-Crumb': 'crumb-value'},
             params=None,
             data=None,
+            timeout=75,
         )
 
     def test_get_view_nested(self, jenkins, mock_session, mocker):
@@ -209,6 +312,7 @@ class TestView:
             headers={'Jenkins-Crumb': 'crumb-value'},
             params=None,
             data=None,
+            timeout=75,
         )
 
 
@@ -285,6 +389,7 @@ class TestQueue:
             headers={'Jenkins-Crumb': 'crumb-value'},
             params=None,
             data=None,
+            timeout=75,
         )
 
 
@@ -328,6 +433,7 @@ class TestNode:
             headers={'Jenkins-Crumb': 'crumb-value'},
             params=None,
             data=None,
+            timeout=75,
         )
 
     def test_get_node_master(self, jenkins, mock_session, mocker):
@@ -369,6 +475,7 @@ class TestNode:
             headers={'Jenkins-Crumb': 'crumb-value'},
             params=None,
             data=None,
+            timeout=75,
         )
 
     def test_get_nodes(self, jenkins, mock_session, mocker):
@@ -413,6 +520,7 @@ class TestNode:
             },
             params=None,
             data='<node>new config</node>',
+            timeout=75,
         )
 
 
@@ -522,6 +630,7 @@ class TestBuild:
             headers={'Jenkins-Crumb': 'crumb-value'},
             params=None,
             data=None,
+            timeout=75,
         )
 
     def test_get_build_replay(self, jenkins, mock_session, mocker):
@@ -563,6 +672,7 @@ class TestBuild:
             headers={'Jenkins-Crumb': 'crumb-value'},
             params=None,
             data=None,
+            timeout=75,
         )
 
     def test_get_build_parameters_no_params(self, jenkins, mock_session, mocker):
@@ -815,6 +925,7 @@ class TestItem:
             },
             params=None,
             data='<project>new config</project>',
+            timeout=75,
         )
 
     def test_query_items(self, jenkins, mock_session, mocker):
@@ -893,4 +1004,5 @@ class TestItem:
             headers={'Jenkins-Crumb': 'crumb-value'},
             params={'param1': 'value1'},
             data=None,
+            timeout=75,
         )
