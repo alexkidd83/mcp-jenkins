@@ -774,3 +774,52 @@ class Jenkins:
         installed = normalize_version(installed_ver)
         required = normalize_version(required_ver)
         return installed > required
+
+    def get_plugin_dependency_graph(self, short_name: str) -> dict:
+        """Get dependency graph for a specific plugin in Graphviz format.
+
+        Recursively analyzes dependencies down to leaf nodes (plugins with no dependencies).
+
+        Args:
+            short_name: The short name of the plugin to analyze.
+
+        Returns:
+            A dictionary containing 'nodes' and 'edges' for Graphviz rendering.
+        """
+        plugins = self.get_plugins(depth=2)
+        installed = {p['shortName']: p for p in plugins}
+
+        if short_name not in installed:
+            return {'nodes': [], 'edges': [], 'error': f'Plugin not found: {short_name}'}
+
+        nodes = []
+        edges = []
+        visited = set()
+
+        def traverse(name: str):
+            if name in visited:
+                return
+            visited.add(name)
+
+            if name not in installed:
+                nodes.append({'id': name, 'label': name, 'status': 'missing'})
+                return
+
+            plugin = installed[name]
+            nodes.append(
+                {
+                    'id': name,
+                    'label': f'{name}\n({plugin.get("version", "?")})',
+                    'status': 'installed',
+                }
+            )
+
+            deps = plugin.get('dependencies', [])
+            for dep in deps:
+                dep_name = dep.get('shortName', '')
+                edges.append({'from': name, 'to': dep_name})
+                traverse(dep_name)
+
+        traverse(short_name)
+
+        return {'nodes': nodes, 'edges': edges}

@@ -72,3 +72,19 @@ async def get_plugins_with_updates(ctx: Context, depth: int = 0) -> list[dict]:
         A list of plugins with available updates
     """
     return jenkins(ctx).get_plugins_with_updates(depth=depth)
+
+
+@mcp.tool(tags={'read'})
+async def get_plugin_dependency_graph(ctx: Context, short_name: str) -> dict:
+    """Get dependency graph for a specific plugin in Graphviz format
+
+    Recursively analyzes dependencies down to leaf nodes.
+    Returns nodes and edges that can be used to generate a dependency graph.
+
+    Args:
+        short_name: The short name of the plugin to analyze
+
+    Returns:
+        A dictionary with 'nodes' and 'edges' for Graphviz rendering
+    """
+    return jenkins(ctx).get_plugin_dependency_graph(short_name=short_name)
