@@ -38,3 +38,6 @@ BUILD_STOP = RestEndpoint('{folder}job/{name}/{number}/stop')
 BUILD_REPLAY = RestEndpoint('{folder}job/{name}/{number}/replay')
 BUILD_PARAMETERS = RestEndpoint('{folder}job/{name}/{number}/api/json?tree=actions[parameters[name,value]]')
 BUILD_TEST_REPORT = RestEndpoint('{folder}job/{name}/{number}/testReport/api/json?depth={depth}')
+
+PLUGIN_LIST = RestEndpoint('pluginManager/api/json?depth={depth}')
+PLUGIN_LIST_TREE = RestEndpoint('pluginManager/api/json?tree=plugins[{tree}]')
