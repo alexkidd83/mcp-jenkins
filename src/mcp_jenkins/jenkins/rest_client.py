@@ -755,6 +755,8 @@ class Jenkins:
 
     def _is_core_compatible(self, jenkins_ver: str, required_ver: str) -> bool:
         """Check if Jenkins version is compatible with required core version."""
+        if not isinstance(jenkins_ver, str) or not isinstance(required_ver, str):
+            return True
 
         def normalize_version(v: str) -> tuple:
             parts = v.split('.')
@@ -766,6 +768,8 @@ class Jenkins:
 
     def _is_version_greater(self, installed_ver: str, required_ver: str) -> bool:
         """Check if installed version is greater than required version."""
+        if not isinstance(installed_ver, str) or not isinstance(required_ver, str):
+            return False
 
         def normalize_version(v: str) -> tuple:
             parts = v.split('.')

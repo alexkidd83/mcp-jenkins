@@ -1006,3 +1006,284 @@ class TestItem:
             data=None,
             timeout=75,
         )
+
+
+class TestPlugin:
+    def test_get_plugins(self, jenkins, mock_session, mocker):
+        mock_session.request.return_value = mocker.Mock(
+            json=lambda: {
+                'plugins': [
+                    {'shortName': 'plugin-a', 'version': '1.0', 'enabled': True},
+                    {'shortName': 'plugin-b', 'version': '2.0', 'enabled': False},
+                ]
+            }
+        )
+
+        assert jenkins.get_plugins(depth=0) == [
+            {'shortName': 'plugin-a', 'version': '1.0', 'enabled': True},
+            {'shortName': 'plugin-b', 'version': '2.0', 'enabled': False},
+        ]
+
+    def test_get_plugin_found(self, jenkins, mock_session, mocker):
+        mock_session.request.return_value = mocker.Mock(
+            json=lambda: {
+                'plugins': [
+                    {'shortName': 'plugin-a', 'version': '1.0'},
+                    {'shortName': 'plugin-b', 'version': '2.0'},
+                ]
+            }
+        )
+
+        result = jenkins.get_plugin(short_name='plugin-b')
+        assert result == {'shortName': 'plugin-b', 'version': '2.0'}
+
+    def test_get_plugin_not_found(self, jenkins, mock_session, mocker):
+        mock_session.request.return_value = mocker.Mock(
+            json=lambda: {
+                'plugins': [
+                    {'shortName': 'plugin-a', 'version': '1.0'},
+                ]
+            }
+        )
+
+        result = jenkins.get_plugin(short_name='nonexistent')
+        assert result is None
+
+    def test_get_plugins_with_problems(self, jenkins, mock_session, mocker):
+        pass
+
+    def test_get_plugins_with_problems_missing_dependency(self, jenkins, mock_session, mocker):
+        mock_session.request.return_value = mocker.Mock(
+            json=lambda: {
+                'version': '2.479.3',
+            }
+        )
+        mock_session.request.return_value.headers = {'X-Jenkins': '2.479.3'}
+
+        mock_session.request.return_value = mocker.Mock(
+            json=lambda: {
+                'plugins': [
+                    {
+                        'shortName': 'plugin-a',
+                        'version': '1.0',
+                        'enabled': True,
+                        'dependencies': [
+                            {'shortName': 'missing-dep', 'version': '1.0', 'optional': False, 'bundled': False},
+                        ],
+                    },
+                ]
+            }
+        )
+
+        problems = jenkins.get_plugins_with_problems()
+        missing_dep = next((p for p in problems if p['problem'] == 'missing_dependency'), None)
+        assert missing_dep is not None
+        assert missing_dep['dependency'] == 'missing-dep'
+
+    def test_get_plugins_with_problems_optional_dependency_ignored(self, jenkins, mock_session, mocker):
+        mock_session.request.return_value = mocker.Mock(
+            json=lambda: {
+                'version': '2.479.3',
+            }
+        )
+        mock_session.request.return_value.headers = {'X-Jenkins': '2.479.3'}
+
+        mock_session.request.return_value = mocker.Mock(
+            json=lambda: {
+                'plugins': [
+                    {
+                        'shortName': 'plugin-a',
+                        'version': '1.0',
+                        'enabled': True,
+                        'dependencies': [
+                            {'shortName': 'optional-dep', 'version': '1.0', 'optional': True, 'bundled': False},
+                        ],
+                    },
+                ]
+            }
+        )
+
+        problems = jenkins.get_plugins_with_problems()
+        missing_optional = next((p for p in problems if p['problem'] == 'missing_optional_dependency'), None)
+        assert missing_optional is not None
+
+    def test_get_plugins_with_problems_version_mismatch(self, jenkins, mock_session, mocker):
+        mock_session.request.return_value = mocker.Mock(
+            json=lambda: {
+                'version': '2.479.3',
+            }
+        )
+        mock_session.request.return_value.headers = {'X-Jenkins': '2.479.3'}
+
+        mock_session.request.return_value = mocker.Mock(
+            json=lambda: {
+                'plugins': [
+                    {
+                        'shortName': 'plugin-a',
+                        'version': '1.0',
+                        'enabled': True,
+                        'dependencies': [
+                            {'shortName': 'dep-plugin', 'version': '2.0', 'optional': False, 'bundled': False},
+                        ],
+                    },
+                    {'shortName': 'dep-plugin', 'version': '1.5'},
+                ]
+            }
+        )
+
+        problems = jenkins.get_plugins_with_problems()
+        version_issue = next((p for p in problems if p['problem'] == 'version_mismatch'), None)
+        assert version_issue is not None
+
+    def test_get_plugins_with_problems_installed_version_higher_no_issue(self, jenkins, mock_session, mocker):
+        mock_session.request.return_value = mocker.Mock(
+            json=lambda: {
+                'version': '2.479.3',
+            }
+        )
+        mock_session.request.return_value.headers = {'X-Jenkins': '2.479.3'}
+
+        mock_session.request.return_value = mocker.Mock(
+            json=lambda: {
+                'plugins': [
+                    {
+                        'shortName': 'plugin-a',
+                        'version': '1.0',
+                        'enabled': True,
+                        'dependencies': [
+                            {'shortName': 'dep-plugin', 'version': '1.0', 'optional': False, 'bundled': False},
+                        ],
+                    },
+                    {'shortName': 'dep-plugin', 'version': '2.0'},
+                ]
+            }
+        )
+
+        problems = jenkins.get_plugins_with_problems()
+        version_issue = next((p for p in problems if p['problem'] == 'version_mismatch'), None)
+        assert version_issue is None
+
+    def test_get_plugins_with_updates(self, jenkins, mock_session, mocker):
+        mock_session.request.return_value = mocker.Mock(
+            json=lambda: {
+                'plugins': [
+                    {'shortName': 'plugin-a', 'version': '1.0', 'hasUpdate': True},
+                    {'shortName': 'plugin-b', 'version': '2.0', 'hasUpdate': False},
+                ]
+            }
+        )
+
+        result = jenkins.get_plugins_with_updates()
+        assert len(result) == 1
+        assert result[0]['shortName'] == 'plugin-a'
+
+    def test_get_plugins_with_backup(self, jenkins, mock_session, mocker):
+        mock_session.request.return_value = mocker.Mock(
+            json=lambda: {
+                'plugins': [
+                    {'shortName': 'plugin-a', 'version': '1.0', 'backupVersion': '0.9', 'downgradable': True},
+                    {'shortName': 'plugin-b', 'version': '2.0'},
+                ]
+            }
+        )
+
+        result = jenkins.get_plugins_with_backup()
+        assert len(result) == 1
+        assert result[0]['shortName'] == 'plugin-a'
+        assert result[0]['backupVersion'] == '0.9'
+
+    def test_get_plugin_dependency_graph(self, jenkins, mock_session, mocker):
+        mock_session.request.return_value = mocker.Mock(
+            json=lambda: {
+                'plugins': [
+                    {
+                        'shortName': 'plugin-a',
+                        'version': '1.0',
+                        'dependencies': [
+                            {'shortName': 'plugin-b', 'version': '1.0', 'optional': False},
+                            {'shortName': 'plugin-c', 'version': '1.0', 'optional': True},
+                        ],
+                    },
+                    {
+                        'shortName': 'plugin-b',
+                        'version': '1.0',
+                        'dependencies': [],
+                    },
+                    {'shortName': 'plugin-c', 'version': '1.0', 'dependencies': []},
+                ]
+            }
+        )
+
+        result = jenkins.get_plugin_dependency_graph('plugin-a')
+        assert 'nodes' in result
+        assert 'edges' in result
+        assert len(result['nodes']) == 3
+        assert len(result['edges']) == 2
+
+    def test_get_plugin_dependency_graph_not_found(self, jenkins, mock_session, mocker):
+        mock_session.request.return_value = mocker.Mock(
+            json=lambda: {
+                'plugins': [
+                    {'shortName': 'plugin-a', 'version': '1.0', 'dependencies': []},
+                ]
+            }
+        )
+
+        result = jenkins.get_plugin_dependency_graph('nonexistent')
+        assert 'error' in result
+        assert result['error'] == 'Plugin not found: nonexistent'
+
+    def test_get_plugins_with_problems_disabled_plugin(self, jenkins, mock_session, mocker):
+        mock_session.request.return_value = mocker.Mock(
+            json=lambda: {
+                'version': '2.479.3',
+            }
+        )
+        mock_session.request.return_value.headers = {'X-Jenkins': '2.479.3'}
+
+        mock_session.request.return_value = mocker.Mock(
+            json=lambda: {
+                'plugins': [
+                    {
+                        'shortName': 'plugin-a',
+                        'version': '1.0',
+                        'enabled': False,
+                        'dependencies': [],
+                    },
+                ]
+            }
+        )
+
+        problems = jenkins.get_plugins_with_problems()
+        disabled = next((p for p in problems if p['problem'] == 'plugin_disabled'), None)
+        assert disabled is not None
+        assert disabled['shortName'] == 'plugin-a'
+
+    def test_get_plugins_with_problems_optional_version_mismatch(self, jenkins, mock_session, mocker):
+        mock_session.request.return_value = mocker.Mock(
+            json=lambda: {
+                'version': '2.479.3',
+            }
+        )
+        mock_session.request.return_value.headers = {'X-Jenkins': '2.479.3'}
+
+        mock_session.request.return_value = mocker.Mock(
+            json=lambda: {
+                'plugins': [
+                    {
+                        'shortName': 'plugin-a',
+                        'version': '1.0',
+                        'enabled': True,
+                        'dependencies': [
+                            {'shortName': 'optional-dep', 'version': '2.0', 'optional': True, 'bundled': False},
+                        ],
+                    },
+                    {'shortName': 'optional-dep', 'version': '1.5'},
+                ]
+            }
+        )
+
+        problems = jenkins.get_plugins_with_problems()
+        version_issue = next((p for p in problems if p['problem'] == 'version_mismatch_optional'), None)
+        assert version_issue is not None
+        assert version_issue['dependency'] == 'optional-dep'
