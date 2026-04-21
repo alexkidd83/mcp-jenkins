@@ -567,3 +567,263 @@ class Jenkins:
         )
 
         return int(response.headers.get('Location', None).strip('/').split('/')[-1])
+
+    def get_plugins(self, *, depth: int = 0) -> list[dict]:
+        """Get a list of all installed plugins.
+
+        Args:
+            depth: The depth of the information to retrieve.
+
+        Returns:
+            A list of plugin dictionaries.
+        """
+        response = self.request('GET', rest_endpoint.PLUGIN_LIST(depth=depth))
+        return response.json().get('plugins', [])
+
+    def get_plugin(self, *, short_name: str, depth: int = 2) -> dict | None:
+        """Get a specific plugin by short name.
+
+                Args:
+                    short_name: The short name of the plugin.
+                    depth: The depth of the information to retrieve. Default is 2 (includes dependencies).
+
+        Returns:
+                    A list of plugins that can be downgraded.
+        """
+        plugins = self.get_plugins(depth=depth)
+        for plugin in plugins:
+            if plugin.get('shortName') == short_name:
+                return plugin
+        return None
+
+    def get_plugins_with_problems(self) -> list[dict]:
+        """Get a list of plugins that have dependency problems.
+
+        Checks each plugin's dependencies against the installed plugins
+        to identify missing dependencies or version mismatches.
+
+        Returns:
+            A list of plugins with dependency problems.
+        """
+        jenkins_version = self._get_jenkins_version()
+        plugins = self.get_plugins(depth=2)
+
+        installed = {p['shortName']: p for p in plugins}
+
+        problems = []
+        for plugin in plugins:
+            short_name = plugin.get('shortName', '')
+            version = plugin.get('version', '')
+            required_core = plugin.get('requiredCoreVersion', '')
+
+            if required_core and jenkins_version:
+                if not self._is_core_compatible(jenkins_version, required_core):
+                    problems.append(
+                        {
+                            'shortName': short_name,
+                            'problem': 'incompatible_core_version',
+                            'pluginVersion': version,
+                            'requiredCoreVersion': required_core,
+                            'jenkinsVersion': jenkins_version,
+                            'severity': 'error',
+                            'message': f'Plugin requires Jenkins {required_core}, but current version is {jenkins_version}',
+                        }
+                    )
+
+            if not plugin.get('enabled'):
+                problems.append(
+                    {
+                        'shortName': short_name,
+                        'problem': 'plugin_disabled',
+                        'pluginVersion': version,
+                        'severity': 'warning',
+                        'message': 'Plugin is currently disabled',
+                    }
+                )
+
+            deps = plugin.get('dependencies', [])
+            for dep in deps:
+                dep_name = dep.get('shortName', '')
+                dep_version = dep.get('version', '')
+                is_optional = dep.get('optional', False)
+                is_bundled = dep.get('bundled', False)
+
+                if dep_name not in installed:
+                    if is_optional:
+                        problems.append(
+                            {
+                                'shortName': short_name,
+                                'problem': 'missing_optional_dependency',
+                                'dependency': dep_name,
+                                'requiredVersion': dep_version,
+                                'severity': 'info',
+                                'message': f'Missing optional dependency: {dep_name}',
+                            }
+                        )
+                    elif not is_bundled:
+                        problems.append(
+                            {
+                                'shortName': short_name,
+                                'problem': 'missing_dependency',
+                                'dependency': dep_name,
+                                'requiredVersion': dep_version,
+                                'severity': 'error',
+                                'message': f'Missing required dependency: {dep_name}',
+                            }
+                        )
+                else:
+                    installed_ver = installed[dep_name].get('version', '')
+                    if dep_version and installed_ver and installed_ver != dep_version:
+                        if self._is_version_greater(installed_ver, dep_version):
+                            continue
+                        if is_optional:
+                            problems.append(
+                                {
+                                    'shortName': short_name,
+                                    'problem': 'version_mismatch_optional',
+                                    'dependency': dep_name,
+                                    'requiredVersion': dep_version,
+                                    'installedVersion': installed_ver,
+                                    'severity': 'info',
+                                    'message': f'Optional dependency {dep_name} version mismatch: required {dep_version}, installed {installed_ver}',
+                                }
+                            )
+                        else:
+                            problems.append(
+                                {
+                                    'shortName': short_name,
+                                    'problem': 'version_mismatch',
+                                    'dependency': dep_name,
+                                    'requiredVersion': dep_version,
+                                    'installedVersion': installed_ver,
+                                    'severity': 'error',
+                                    'message': f'Dependency {dep_name} version mismatch: required {dep_version}, installed {installed_ver}',
+                                }
+                            )
+
+        return problems
+
+    def get_plugins_with_updates(self, depth: int = 0) -> list[dict]:
+        """Get plugins that have available updates.
+
+        Args:
+            depth: The depth of the information to retrieve.
+
+        Returns:
+            A list of plugins with available updates.
+        """
+        plugins = self.get_plugins(depth=depth)
+        return [
+            {
+                'shortName': p.get('shortName'),
+                'longName': p.get('longName'),
+                'version': p.get('version'),
+            }
+            for p in plugins
+            if p.get('hasUpdate')
+        ]
+
+    def get_plugins_with_backup(self, depth: int = 0) -> list[dict]:
+        """Get plugins that can be downgraded.
+
+        Plugins with backupVersion and downgradable=true can be rolled back.
+
+        Args:
+            depth: The depth of the information to retrieve.
+
+        Returns:
+            A list of plugins that can be downgraded.
+        """
+        response = self.request('GET', rest_endpoint.PLUGIN_LIST(depth=depth))
+        plugins = response.json().get('plugins', [])
+        return [
+            {
+                'shortName': p.get('shortName'),
+                'longName': p.get('longName'),
+                'version': p.get('version'),
+                'backupVersion': p.get('backupVersion'),
+                'downgradable': p.get('downgradable'),
+            }
+            for p in plugins
+            if p.get('backupVersion') and p.get('downgradable')
+        ]
+
+    def _get_jenkins_version(self) -> str:
+        """Get the Jenkins core version from response header."""
+        response = self.request('GET', '', crumb=False)
+        return response.headers.get('X-Jenkins', '')
+
+    def _is_core_compatible(self, jenkins_ver: str, required_ver: str) -> bool:
+        """Check if Jenkins version is compatible with required core version."""
+        if not isinstance(jenkins_ver, str) or not isinstance(required_ver, str):
+            return True
+
+        def normalize_version(v: str) -> tuple:
+            parts = v.split('.')
+            return tuple(int(p) if p.isdigit() else 0 for p in parts[:3])
+
+        core = normalize_version(jenkins_ver)
+        required = normalize_version(required_ver)
+        return core >= required
+
+    def _is_version_greater(self, installed_ver: str, required_ver: str) -> bool:
+        """Check if installed version is greater than required version."""
+        if not isinstance(installed_ver, str) or not isinstance(required_ver, str):
+            return False
+
+        def normalize_version(v: str) -> tuple:
+            parts = v.split('.')
+            return tuple(int(p) if p.isdigit() else 0 for p in parts[:3])
+
+        installed = normalize_version(installed_ver)
+        required = normalize_version(required_ver)
+        return installed > required
+
+    def get_plugin_dependency_graph(self, short_name: str) -> dict:
+        """Get dependency graph for a specific plugin in Graphviz format.
+
+        Recursively analyzes dependencies down to leaf nodes (plugins with no dependencies).
+
+        Args:
+            short_name: The short name of the plugin to analyze.
+
+        Returns:
+            A dictionary containing 'nodes' and 'edges' for Graphviz rendering.
+        """
+        plugins = self.get_plugins(depth=2)
+        installed = {p['shortName']: p for p in plugins}
+
+        if short_name not in installed:
+            return {'nodes': [], 'edges': [], 'error': f'Plugin not found: {short_name}'}
+
+        nodes = []
+        edges = []
+        visited = set()
+
+        def traverse(name: str):
+            if name in visited:
+                return
+            visited.add(name)
+
+            if name not in installed:
+                nodes.append({'id': name, 'label': name, 'status': 'missing'})
+                return
+
+            plugin = installed[name]
+            nodes.append(
+                {
+                    'id': name,
+                    'label': f'{name}\n({plugin.get("version", "?")})',
+                    'status': 'installed',
+                }
+            )
+
+            deps = plugin.get('dependencies', [])
+            for dep in deps:
+                dep_name = dep.get('shortName', '')
+                edges.append({'from': name, 'to': dep_name})
+                traverse(dep_name)
+
+        traverse(short_name)
+
+        return {'nodes': nodes, 'edges': edges}
