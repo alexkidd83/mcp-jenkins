@@ -44,6 +44,20 @@ uvx mcp-jenkins --transport streamable-http
 | `--host`                                                     | Host address for `streamable-http` transport. Default is `0.0.0.0`                                              | No       |
 | `--port`                                                     | Port number for `streamable-http` transport. Default is `9887`.                                                 | No       |
 
+### Environment Variables
+
+You can also provide Jenkins credentials via environment variables:
+
+- `jenkins_url` or `JENKINS_URL`
+- `jenkins_username` or `JENKINS_USERNAME` or `JENKINS_USER`
+- `jenkins_password` or `JENKINS_PASSWORD` or `JENKINS_TOKEN`
+- `jenkins_timeout` or `JENKINS_TIMEOUT`
+- `jenkins_verify_ssl` or `JENKINS_VERIFY_SSL`
+- `JENKINS_CA_BUNDLE` (path to a custom CA bundle file)
+
+`jenkins_verify_ssl` / `JENKINS_VERIFY_SSL` accepts `true` / `false`.
+If `JENKINS_CA_BUNDLE` is set, that file path is used as Requests `verify` value.
+
 ## Configuration and Usage
 
 ### Jetbrains Github Copilot
@@ -130,6 +144,27 @@ uvx mcp-jenkins \
 | `get_view`                 | Get a specific view by name.                        |
 | `get_all_views`          | Get the configuration of a specific view.           |
 
+
+## Typical CI Flow (Using MCP Tools)
+
+This is a common automation flow after pushing code:
+
+1. Find the job:
+   - `query_items(fullname_pattern=...)` or `get_item(fullname=...)`
+2. Trigger build:
+   - `build_item(fullname=..., build_type='build')`
+   - For parameterized jobs use `build_type='buildWithParameters'` with `params={...}`
+3. Track queue:
+   - `get_queue_item(id=<queue_id>)` until executable/build number is available
+4. Track build:
+   - `get_build(fullname=..., number=...)` until `building=false`
+5. Inspect results:
+   - `get_build_test_report(...)` for structured test counts (`failCount`, `passCount`, `skipCount`)
+   - `get_build_console_output(..., pattern='(FAIL|ERROR|Exception)', limit=...)` for fast log triage
+
+Notes:
+- Some Jenkins endpoints are permission-gated (for example plugin manager APIs).
+- On restricted roles, plugin tools may return permission errors while regular job/build tools still work.
 
 ## Contributing
 [CONTRIBUTING.md](CONTRIBUTING.md)

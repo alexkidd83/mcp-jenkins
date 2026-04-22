@@ -40,6 +40,43 @@ class TestLifespan:
             assert context.jenkins_verify_ssl is True
             assert context.jenkins_session_singleton is True
 
+    @pytest.mark.asyncio
+    async def test_lifespan_context_accepts_uppercase_aliases(self, mocker):
+        def getenv(key: str, default=None):
+            env = {
+                'JENKINS_URL': 'https://jenkins.uppercase.example.com',
+                'JENKINS_USER': 'upper-user',
+                'JENKINS_TOKEN': 'upper-token',
+                'JENKINS_TIMEOUT': '9',
+                'JENKINS_VERIFY_SSL': 'false',
+                'JENKINS_SESSION_SINGLETON': 'false',
+            }
+            return env.get(key, default)
+
+        mocker.patch('mcp_jenkins.core.lifespan.os', mocker.Mock(getenv=getenv))
+        async with lifespan(mocker.Mock) as context:
+            assert context.jenkins_url == 'https://jenkins.uppercase.example.com'
+            assert context.jenkins_username == 'upper-user'
+            assert context.jenkins_password == 'upper-token'
+            assert context.jenkins_timeout == 9
+            assert context.jenkins_verify_ssl is False
+            assert context.jenkins_session_singleton is False
+
+    @pytest.mark.asyncio
+    async def test_lifespan_context_accepts_ca_bundle_path(self, mocker):
+        def getenv(key: str, default=None):
+            env = {
+                'jenkins_url': 'https://jenkins.example.com',
+                'jenkins_username': 'username',
+                'jenkins_password': 'password',
+                'JENKINS_CA_BUNDLE': '/etc/ssl/certs/internal-ca.pem',
+            }
+            return env.get(key, default)
+
+        mocker.patch('mcp_jenkins.core.lifespan.os', mocker.Mock(getenv=getenv))
+        async with lifespan(mocker.Mock) as context:
+            assert context.jenkins_verify_ssl == '/etc/ssl/certs/internal-ca.pem'
+
 
 class TestJenkins:
     @pytest.fixture(autouse=True)

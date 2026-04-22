@@ -209,6 +209,20 @@ class TestCrumbRetry:
         assert exc_info.value.response.status_code == 403
         assert mock_session.request.call_count == 3
 
+    def test_no_retry_on_get_even_with_cached_crumb(self, mock_session, mocker):
+        """GET requests should not trigger crumb refresh/retry loops."""
+        j = Jenkins(url='https://example.com/', username='username', password='password')
+        j._crumb_header = {'Jenkins-Crumb': 'some-crumb'}
+
+        forbidden_resp = mocker.Mock(status_code=403)
+        forbidden_resp.raise_for_status.side_effect = HTTPError(response=forbidden_resp)
+        mock_session.request.return_value = forbidden_resp
+
+        with pytest.raises(HTTPError):
+            j.request('GET', 'pluginManager/api/json?depth=0')
+
+        assert mock_session.request.call_count == 1
+
 
 def test_parse_fullname(jenkins):
     assert jenkins._parse_fullname('job-name') == ('', 'job-name')
@@ -1023,6 +1037,14 @@ class TestPlugin:
             {'shortName': 'plugin-a', 'version': '1.0', 'enabled': True},
             {'shortName': 'plugin-b', 'version': '2.0', 'enabled': False},
         ]
+
+    def test_get_plugins_permission_error(self, jenkins, mock_session, mocker):
+        forbidden_resp = mocker.Mock(status_code=403)
+        forbidden_resp.raise_for_status.side_effect = HTTPError(response=forbidden_resp)
+        mock_session.request.return_value = forbidden_resp
+
+        with pytest.raises(PermissionError, match='Cannot read plugin metadata'):
+            jenkins.get_plugins(depth=0)
 
     def test_get_plugin_found(self, jenkins, mock_session, mocker):
         mock_session.request.return_value = mocker.Mock(

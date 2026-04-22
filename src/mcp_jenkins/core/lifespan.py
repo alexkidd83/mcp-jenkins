@@ -17,20 +17,24 @@ class LifespanContext(BaseModel):
     jenkins_username: str | None
     jenkins_password: str | None
     jenkins_timeout: int = 5
-    jenkins_verify_ssl: bool = True
+    jenkins_verify_ssl: bool | str = True
 
     jenkins_session_singleton: bool = True
 
 
 @asynccontextmanager
 async def lifespan(app: FastMCP[LifespanContext]) -> AsyncIterator['LifespanContext']:
-    jenkins_url = os.getenv('jenkins_url')
-    jenkins_username = os.getenv('jenkins_username')
-    jenkins_password = os.getenv('jenkins_password')
+    jenkins_url = _get_env('jenkins_url', 'JENKINS_URL')
+    jenkins_username = _get_env('jenkins_username', 'JENKINS_USERNAME', 'JENKINS_USER')
+    jenkins_password = _get_env('jenkins_password', 'JENKINS_PASSWORD', 'JENKINS_TOKEN')
 
-    jenkins_timeout = int(os.getenv('jenkins_timeout', '5'))
-    jenkins_verify_ssl = os.getenv('jenkins_verify_ssl', 'true').lower() == 'true'
-    jenkins_session_singleton = os.getenv('jenkins_session_singleton', 'true').lower() == 'true'
+    jenkins_timeout = int(_get_env('jenkins_timeout', 'JENKINS_TIMEOUT', default='5'))
+    jenkins_verify_ssl = _parse_verify_ssl(
+        _get_env('jenkins_verify_ssl', 'JENKINS_VERIFY_SSL', 'JENKINS_CA_BUNDLE', default='true')
+    )
+    jenkins_session_singleton = _get_env(
+        'jenkins_session_singleton', 'JENKINS_SESSION_SINGLETON', default='true'
+    ).lower() == 'true'
 
     yield LifespanContext(
         jenkins_url=jenkins_url,
@@ -72,7 +76,8 @@ def jenkins(ctx: Context) -> Jenkins:
         msg = (
             'Jenkins authentication details are missing. '
             'Please provide them via x-jenkins-* headers '
-            'or CLI arguments (--jenkins-url, --jenkins-username, --jenkins-password).'
+            'or CLI arguments (--jenkins-url, --jenkins-username, --jenkins-password), '
+            'or environment variables (jenkins_* / JENKINS_*).'
         )
         raise ValueError(msg)
 
@@ -90,3 +95,21 @@ def jenkins(ctx: Context) -> Jenkins:
     )
 
     return ctx.session.jenkins
+
+
+def _get_env(*keys: str, default: str | None = None) -> str | None:
+    for key in keys:
+        value = os.getenv(key)
+        if value:
+            return value
+    return default
+
+
+def _parse_verify_ssl(value: str) -> bool | str:
+    lowered = value.lower()
+    if lowered in ('true', '1', 'yes'):
+        return True
+    if lowered in ('false', '0', 'no'):
+        return False
+    # Any non-boolean value is treated as a CA bundle path for requests.Session.verify
+    return value
