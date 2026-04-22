@@ -164,7 +164,7 @@ This is a common automation flow after pushing code:
 
 Notes:
 - Some Jenkins endpoints are permission-gated (for example plugin manager APIs).
-- On restricted roles, plugin tools may return permission errors while regular job/build tools still work.
+- On restricted roles, plugin tools may raise `JenkinsPermissionError` while regular job/build tools still work.
 
 ## Contributing
 [CONTRIBUTING.md](CONTRIBUTING.md)

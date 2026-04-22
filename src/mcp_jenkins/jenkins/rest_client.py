@@ -10,6 +10,7 @@ from requests.auth import HTTPBasicAuth
 from requests.exceptions import HTTPError
 
 from mcp_jenkins.jenkins import rest_endpoint
+from mcp_jenkins.jenkins.errors import JenkinsPermissionError
 from mcp_jenkins.jenkins.model.build import Build, BuildReplay
 from mcp_jenkins.jenkins.model.item import (
     FreeStyleProject,
@@ -588,7 +589,7 @@ class Jenkins:
                     'Cannot read plugin metadata: Jenkins denied access to pluginManager API '
                     '(requires higher Jenkins permissions).'
                 )
-                raise PermissionError(msg) from e
+                raise JenkinsPermissionError(msg) from e
             raise
 
     def get_plugin(self, *, short_name: str, depth: int = 2) -> dict | None:

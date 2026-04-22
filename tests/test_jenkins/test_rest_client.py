@@ -2,6 +2,7 @@ import pytest
 from requests import HTTPError
 
 from mcp_jenkins.jenkins import Jenkins
+from mcp_jenkins.jenkins.errors import JenkinsPermissionError
 from mcp_jenkins.jenkins.model.build import Build, BuildReplay
 from mcp_jenkins.jenkins.model.item import (
     Folder,
@@ -1043,7 +1044,15 @@ class TestPlugin:
         forbidden_resp.raise_for_status.side_effect = HTTPError(response=forbidden_resp)
         mock_session.request.return_value = forbidden_resp
 
-        with pytest.raises(PermissionError, match='Cannot read plugin metadata'):
+        with pytest.raises(JenkinsPermissionError, match='Cannot read plugin metadata'):
+            jenkins.get_plugins(depth=0)
+
+    def test_get_plugins_non_auth_error_bubbles_http_error(self, jenkins, mock_session, mocker):
+        error_resp = mocker.Mock(status_code=500)
+        error_resp.raise_for_status.side_effect = HTTPError(response=error_resp)
+        mock_session.request.return_value = error_resp
+
+        with pytest.raises(HTTPError):
             jenkins.get_plugins(depth=0)
 
     def test_get_plugin_found(self, jenkins, mock_session, mocker):
@@ -1058,6 +1067,27 @@ class TestPlugin:
 
         result = jenkins.get_plugin(short_name='plugin-b')
         assert result == {'shortName': 'plugin-b', 'version': '2.0'}
+
+    def test_get_plugin_propagates_permission_error(self, jenkins, mocker):
+        mocker.patch.object(
+            jenkins,
+            'get_plugins',
+            side_effect=JenkinsPermissionError('Cannot read plugin metadata'),
+        )
+
+        with pytest.raises(JenkinsPermissionError):
+            jenkins.get_plugin(short_name='plugin-a')
+
+    def test_get_plugins_with_problems_propagates_permission_error(self, jenkins, mocker):
+        mocker.patch.object(jenkins, '_get_jenkins_version', return_value='2.489')
+        mocker.patch.object(
+            jenkins,
+            'get_plugins',
+            side_effect=JenkinsPermissionError('Cannot read plugin metadata'),
+        )
+
+        with pytest.raises(JenkinsPermissionError):
+            jenkins.get_plugins_with_problems()
 
     def test_get_plugin_not_found(self, jenkins, mock_session, mocker):
         mock_session.request.return_value = mocker.Mock(

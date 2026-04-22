@@ -100,16 +100,17 @@ def jenkins(ctx: Context) -> Jenkins:
 def _get_env(*keys: str, default: str | None = None) -> str | None:
     for key in keys:
         value = os.getenv(key)
-        if value:
+        if value is not None:
             return value
     return default
 
 
 def _parse_verify_ssl(value: str) -> bool | str:
-    lowered = value.lower()
+    stripped = value.strip()
+    lowered = stripped.lower()
     if lowered in ('true', '1', 'yes'):
         return True
     if lowered in ('false', '0', 'no'):
         return False
     # Any non-boolean value is treated as a CA bundle path for requests.Session.verify
-    return value
+    return stripped
