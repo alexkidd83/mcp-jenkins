@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 
 import click
+from click.core import ParameterSource
 from loguru import logger
 
 try:
@@ -58,7 +59,9 @@ if sys.platform == 'win32':
     default=9887,
     help='Port to listen on for SSE or Streamable HTTP transport',
 )
+@click.pass_context
 def main(
+    ctx: click.Context,
     jenkins_url: str,
     jenkins_username: str,
     jenkins_password: str,
@@ -71,16 +74,17 @@ def main(
     host: str,
     port: int,
 ) -> None:
-    if jenkins_url:
-        os.environ['jenkins_url'] = jenkins_url
-    if jenkins_username:
-        os.environ['jenkins_username'] = jenkins_username
-    if jenkins_password:
-        os.environ['jenkins_password'] = jenkins_password
+    def _set_cli_env(param_name: str, env_name: str, value: str) -> None:
+        source = ctx.get_parameter_source(param_name)
+        if source is not ParameterSource.DEFAULT:
+            os.environ[env_name] = value
 
-    os.environ['jenkins_timeout'] = str(jenkins_timeout)
-    os.environ['jenkins_verify_ssl'] = str(jenkins_verify_ssl).lower()
-    os.environ['jenkins_session_singleton'] = str(jenkins_session_singleton).lower()
+    _set_cli_env('jenkins_url', 'jenkins_url', jenkins_url)
+    _set_cli_env('jenkins_username', 'jenkins_username', jenkins_username)
+    _set_cli_env('jenkins_password', 'jenkins_password', jenkins_password)
+    _set_cli_env('jenkins_timeout', 'jenkins_timeout', str(jenkins_timeout))
+    _set_cli_env('jenkins_verify_ssl', 'jenkins_verify_ssl', str(jenkins_verify_ssl).lower())
+    _set_cli_env('jenkins_session_singleton', 'jenkins_session_singleton', str(jenkins_session_singleton).lower())
 
     from mcp_jenkins.server import mcp
 

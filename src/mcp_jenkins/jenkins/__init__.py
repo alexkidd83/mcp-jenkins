@@ -1,3 +1,4 @@
+from .errors import JenkinsPermissionError
 from .rest_client import Jenkins
 
-__all__ = ['Jenkins']
+__all__ = ['Jenkins', 'JenkinsPermissionError']

@@ -10,6 +10,7 @@ from requests.auth import HTTPBasicAuth
 from requests.exceptions import HTTPError
 
 from mcp_jenkins.jenkins import rest_endpoint
+from mcp_jenkins.jenkins.errors import JenkinsPermissionError
 from mcp_jenkins.jenkins.model.build import Build, BuildReplay
 from mcp_jenkins.jenkins.model.item import (
     FreeStyleProject,
@@ -31,7 +32,7 @@ class Jenkins:
         username: str,
         password: str,
         timeout: int = 75,
-        verify_ssl: bool = True,
+        verify_ssl: bool | str = True,
     ) -> None:
         self.url = url
         self.timeout = timeout
@@ -91,11 +92,13 @@ class Jenkins:
             method=method, url=url, headers=headers, params=params, data=data, timeout=self.timeout,
         )
 
+        is_mutating = method.upper() not in ('GET', 'HEAD', 'OPTIONS')
+
         # When a Jenkins HTTP session expires the cached CSRF crumb becomes
         # invalid and every POST returns 403.  Retry once with a fresh crumb
         # before giving up — this covers the stale-session case while still
         # surfacing genuine permission errors on the second attempt.
-        if crumb and response.status_code == 403 and self._crumb_header:
+        if crumb and is_mutating and response.status_code == 403 and self._crumb_header:
             logger.warning('Received 403 with a cached crumb — refreshing crumb and retrying the request')
             self._crumb_header = None
             headers.update(self.crumb_header)
@@ -577,8 +580,17 @@ class Jenkins:
         Returns:
             A list of plugin dictionaries.
         """
-        response = self.request('GET', rest_endpoint.PLUGIN_LIST(depth=depth))
-        return response.json().get('plugins', [])
+        try:
+            response = self.request('GET', rest_endpoint.PLUGIN_LIST(depth=depth))
+            return response.json().get('plugins', [])
+        except HTTPError as e:
+            if e.response is not None and e.response.status_code in (401, 403):
+                msg = (
+                    'Cannot read plugin metadata: Jenkins denied access to pluginManager API '
+                    '(requires higher Jenkins permissions).'
+                )
+                raise JenkinsPermissionError(msg) from e
+            raise
 
     def get_plugin(self, *, short_name: str, depth: int = 2) -> dict | None:
         """Get a specific plugin by short name.
