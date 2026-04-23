@@ -122,7 +122,7 @@ uvx mcp-jenkins \
 ## Available Tools
 | Tool                       | Description                                         |
 |----------------------------|-----------------------------------------------------|
-| `get_item`                 | Get a specific item by name.                        |
+| `get_item`                 | Get a specific item by name. Supports `tree` for field selection. |
 | `get_item_config`          | Get the configuration of a specific item.           |
 | `get_item_parameters`      | Get the parameters of a specific item.              |
 | `get_all_items`            | Get all items in Jenkins.                           |
@@ -134,16 +134,39 @@ uvx mcp-jenkins \
 | `get_all_queue_items`      | Get all queue items in Jenkins.                     |
 | `get_queue_item`           | Get a specific queue item by ID.                    |
 | `cancel_queue_item`        | Cancel a specific queue item by ID.                 |
-| `get_build`                | Get a specific build by job name and build number.  |
+| `get_build`                | Get a specific build by job name and build number. Supports `tree` for field selection. |
 | `get_build_scripts`        | Get scripts associated with a specific build.       |
 | `get_build_console_output` | Get the console output of a specific build.         |
 | `get_build_parameters`     | Get the parameters of a specific build.             |
-| `get_build_test_report`    | Get the test report of a specific build.            |
+| `get_build_test_report`    | Get the test report of a specific build. Supports `tree` for field selection. |
 | `get_running_builds`       | Get all currently running builds in Jenkins.        |
 | `stop_build`               | Stop a specific build by job name and build number. |
 | `get_view`                 | Get a specific view by name.                        |
-| `get_all_views`          | Get the configuration of a specific view.           |
+| `get_all_views`            | Get the configuration of a specific view.           |
 
+### `tree` Parameter (Field Selection)
+
+`get_item`, `get_build`, and `get_build_test_report` accept an optional `tree` parameter that maps directly to the [Jenkins REST API `?tree=` query parameter](https://www.jenkins.io/doc/book/using/remote-access-api/). It lets you select only the fields you need, which can reduce response sizes by an order of magnitude.
+
+**Syntax:** comma-separated field names, with nested fields in `[]`.
+
+| Use case | `tree` value |
+|---|---|
+| Test failures only | `suites[cases[name,status,errorDetails]]` |
+| Build result + duration | `number,result,duration,timestamp` |
+| Job name + last build status | `name,color,lastBuild[number,result]` |
+
+**Example — fetch only failed test cases:**
+```python
+get_build_test_report(
+    fullname="My_Job",
+    tree="suites[cases[name,status,errorDetails]]"
+)
+```
+Then filter locally:
+```bash
+jq '[.suites[].cases[] | select(.status == "FAILED") | {name, error: .errorDetails}]'
+```
 
 ## Typical CI Flow (Using MCP Tools)
 
@@ -151,6 +174,7 @@ This is a common automation flow after pushing code:
 
 1. Find the job:
    - `query_items(fullname_pattern=...)` or `get_item(fullname=...)`
+   - Use `color_pattern="red"` on `query_items` to scope to failing jobs only
 2. Trigger build:
    - `build_item(fullname=..., build_type='build')`
    - For parameterized jobs use `build_type='buildWithParameters'` with `params={...}`
@@ -159,7 +183,7 @@ This is a common automation flow after pushing code:
 4. Track build:
    - `get_build(fullname=..., number=...)` until `building=false`
 5. Inspect results:
-   - `get_build_test_report(...)` for structured test counts (`failCount`, `passCount`, `skipCount`)
+   - `get_build_test_report(..., tree="suites[cases[name,status,errorDetails]]")` — returns only test names + failure details, avoiding megabyte-sized payloads
    - `get_build_console_output(..., pattern='(FAIL|ERROR|Exception)', limit=...)` for fast log triage
 
 Notes:
