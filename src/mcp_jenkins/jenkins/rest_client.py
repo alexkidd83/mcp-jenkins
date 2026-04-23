@@ -271,13 +271,14 @@ class Jenkins:
             data=config_xml,
         )
 
-    def get_build(self, *, fullname: str, number: int, depth: int = 0) -> Build:
+    def get_build(self, *, fullname: str, number: int, depth: int = 0, tree: str | None = None) -> Build:
         """Get build by fullname and number.
 
         Args:
             fullname: The fullname of the job.
             number: The build number.
             depth: The depth of the information to retrieve.
+            tree: Optional Jenkins tree parameter to select specific fields (e.g. "number,result,duration").
 
         Returns:
             The Build object.
@@ -286,6 +287,7 @@ class Jenkins:
         response = self.request(
             'GET',
             rest_endpoint.BUILD(folder=folder, name=name, number=number, depth=depth),
+            params={'tree': tree} if tree else None,
         )
         return Build.model_validate(response.json())
 
@@ -388,13 +390,15 @@ class Jenkins:
                 return {p['name']: p.get('value') for p in action['parameters']}
         return {}
 
-    def get_build_test_report(self, *, fullname: str, number: int, depth: int = 0) -> dict:
+    def get_build_test_report(self, *, fullname: str, number: int, depth: int = 0, tree: str | None = None) -> dict:
         """Get the test report of a specific build.
 
         Args:
             fullname: The fullname of the job.
             number: The build number.
             depth: The depth of the information to retrieve.
+            tree: Optional Jenkins tree parameter to select specific fields
+                  (e.g. "suites[cases[name,status,errorDetails]]" to fetch only failures).
 
         Returns:
             A dictionary representing the test report.
@@ -403,6 +407,7 @@ class Jenkins:
         response = self.request(
             'GET',
             rest_endpoint.BUILD_TEST_REPORT(folder=folder, name=name, number=number, depth=depth),
+            params={'tree': tree} if tree else None,
         )
         return response.json()
 
@@ -457,18 +462,23 @@ class Jenkins:
 
         return items
 
-    def get_item(self, *, fullname: str, depth: int = 0) -> ItemType:
+    def get_item(self, *, fullname: str, depth: int = 0, tree: str | None = None) -> ItemType:
         """Get item by its fullname.
 
         Args:
             fullname: The full name of the item (e.g., "folder1/folder2/item").
             depth: The depth of the information to retrieve.
+            tree: Optional Jenkins tree parameter to select specific fields (e.g. "name,color,lastBuild[number,result]").
 
         Returns:
             The ItemType object representing the item.
         """
         folder, name = self._parse_fullname(fullname)
-        response = self.request('GET', rest_endpoint.ITEM(folder=folder, name=name, depth=depth))
+        response = self.request(
+            'GET',
+            rest_endpoint.ITEM(folder=folder, name=name, depth=depth),
+            params={'tree': tree} if tree else None,
+        )
         return serialize_item(response.json())
 
     def get_item_config(self, *, fullname: str) -> str:
