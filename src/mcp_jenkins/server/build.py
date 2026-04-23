@@ -18,12 +18,13 @@ async def get_running_builds(ctx: Context) -> list[dict]:
 
 
 @mcp.tool(tags=['read'])
-async def get_build(ctx: Context, fullname: str, number: int | None = None) -> dict:
+async def get_build(ctx: Context, fullname: str, number: int | None = None, tree: str | None = None) -> dict:
     """Get specific build info from Jenkins
 
     Args:
         fullname: The fullname of the job
         number: The number of the build, if None, get the last build
+        tree: Optional Jenkins tree parameter to select specific fields (e.g. "number,result,duration")
 
     Returns:
         The build info
@@ -31,7 +32,7 @@ async def get_build(ctx: Context, fullname: str, number: int | None = None) -> d
     if number is None:
         number = jenkins(ctx).get_item(fullname=fullname, depth=1).lastBuild.number
 
-    return jenkins(ctx).get_build(fullname=fullname, number=number).model_dump(exclude_none=True)
+    return jenkins(ctx).get_build(fullname=fullname, number=number, tree=tree).model_dump(exclude_none=True)
 
 
 @mcp.tool(tags=['read'])
@@ -83,12 +84,19 @@ async def get_build_console_output(
 
 
 @mcp.tool(tags=['read'])
-async def get_build_test_report(ctx: Context, fullname: str, number: int | None = None) -> dict:
+async def get_build_test_report(
+    ctx: Context,
+    fullname: str,
+    number: int | None = None,
+    tree: str | None = None,
+) -> dict:
     """Get the test report of a specific build in Jenkins
 
     Args:
         fullname: The fullname of the job
         number: The number of the build, if None, get the last build
+        tree: Optional Jenkins tree parameter to select specific fields.
+              Use "suites[cases[name,status,errorDetails]]" to fetch only test case names and failures.
 
     Returns:
         The test report of the build
@@ -96,7 +104,7 @@ async def get_build_test_report(ctx: Context, fullname: str, number: int | None 
     if number is None:
         number = jenkins(ctx).get_item(fullname=fullname, depth=1).lastBuild.number
 
-    return jenkins(ctx).get_build_test_report(fullname=fullname, number=number)
+    return jenkins(ctx).get_build_test_report(fullname=fullname, number=number, tree=tree)
 
 
 @mcp.tool(tags=['read'])

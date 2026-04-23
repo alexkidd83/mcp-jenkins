@@ -18,16 +18,17 @@ async def get_all_items(ctx: Context) -> list[dict]:
 
 
 @mcp.tool(tags=['read'])
-async def get_item(ctx: Context, fullname: str) -> dict:
+async def get_item(ctx: Context, fullname: str, tree: str | None = None) -> dict:
     """Get specific item from Jenkins
 
     Args:
         fullname: The fullname of the item
+        tree: Optional Jenkins tree parameter to select specific fields (e.g. "name,color,lastBuild[number,result]")
 
     Returns:
         The item
     """
-    return jenkins(ctx).get_item(fullname=fullname).model_dump(exclude_none=True)
+    return jenkins(ctx).get_item(fullname=fullname, tree=tree).model_dump(exclude_none=True)
 
 
 @mcp.tool(tags=['read'])
